@@ -8,7 +8,10 @@ import sys
 
 #Library for (file-)system operations
 import os
+import os.path
 
+#Library to use sqlite3
+import sqlite3
 
 # ====================================================================== Control flow begin
 # Declare all global variables (this is not neccessary - just for overview purposes)
@@ -17,8 +20,12 @@ input_filename_has_header = False
 
 output_filename = None
 
-original_data = []
+#original_data = []
 original_columns = []
+original_data_count = 0
+id_column_index = None
+marked = []
+unmarked = []
 
 # ---------------------------------------------------------------------- Checking command line arguments
 
@@ -39,38 +46,67 @@ if not os.path.isfile(input_filename):
 
 if os.path.isfile(output_filename):
   print("Specified output file does exist: Overwrite? (Y): ")
-  answer = raw_input()
+  answer = input()
   if answer == "" or answer.upper() == "Y":
     pass
   else:
     print("Abort by user")
     exit(0)
 
+# ---------------------------------------------------------------------- Prepare Database
+
+database = sqlite3.connect(":memory:")
+cursor = database.cursor()
+
 # ---------------------------------------------------------------------- Read data from csv file
 
 input_file = open(input_filename, 'r')
 csvreader = csv.reader(input_file)
+filesize = os.path.getsize(input_filename) / (1024 ** 2)
 
-first = True
-j=0
+print('Reading data from file ' + input_filename + ' [' + str(filesize) + ']')
+
+first = True  # To know wheter we're processing the first row
+j=0 # Counter for the datasets
 for row in csvreader:
   if first:
     first = False
+    sql = []
     # Initialise the column information
     for i in range(len(row)):
       field = row[i]
-      header_data = {'float':True, 'name':str(i), 'max':None, 'min':None, 'missing_values':[], 'mean':0.0}
+      header_data = {'float':True, 'name':None, 'max':None, 'min':None, 'missing_values':[], 'mean':0.0, 'values':{}}
       if input_filename_has_header:
-        header_data['name'] = field
+        header_data['name'] = field.replace(' ','').strip()
+        sql.append(header_data['name'])
+      else :
+        sql.append("COL" + str(i))
+      if header_data['name'] == 'id':
+        id_column_index = i
       original_columns.append(header_data)
+    
+    if id_column_index == None:
+      header_data = {'float':False, 'name':'id', 'max':None, 'min':None, 'missing_values':[], 'mean':0.0, 'values':{}}
+      original_columns.insert(0, header_data)
+      sql.insert(0, 'id')
+      id_column_index = 0
+    
+    sql = 'CREATE TABLE data ("' + '","'.join(sql) + '");'
+    cursor.execute(sql)
     
     if input_filename_has_header:
       continue
-  
   # Read the data and transform the string to float where possible
+  if len(row) < len(original_columns):
+    row.insert(0, str(j))
+  else:
+    j = row[id_column_index]
+  
+  unmarked.append(str(j))
+  
   newrow = []
   for i in range(len(row)):
-    field = row[i]
+    field = row[i].strip()
     column = original_columns[i]
     
     if field == None or field == '':
@@ -79,23 +115,309 @@ for row in csvreader:
       if column['float']:
         try:
           field = float(field)
+          # Collect statistics about the data
           if column['min'] == None or field < column['min']:
             column['min'] = field
           if column['max'] == None or field > column['max']:
             column['max'] = field
           column['mean'] += field
+        
         except ValueError:
           column['float'] = False
           column['mean'] = 0
           pass
+    
+    if field not in column['values']:
+      column['values'][field] = []
+    column['values'][field].append(j)
+    
     newrow.append(field)
   
-  original_data.append(newrow)
+  #original_data.append(newrow)
+  cursor.execute('INSERT INTO data VALUES (' + ','.join(['?'] * len(original_columns)) + ');', newrow)
+  original_data_count += 1
   j+=1
+database.commit()
 
+# Compute the mean and output the statistics
 for i in range(len(original_columns)):
   column = original_columns[i]
   if column['float']:
-    column['mean'] = column['mean'] / (len(original_data) - len(column['missing_values']))  
+    column['mean'] = column['mean'] / (original_data_count - len(column['missing_values']))  
+
+# Command Loop
+command = None
+
+while command != 'EXIT' and command != 'QUIT':
+  print('========== ========== ========== ========== ==========')
+  for i in range(len(original_columns)):
+    column = original_columns[i]
+    print(str(i), end=' '),      
+    if column['name']:
+      print(column['name'], end=''),
+    if column['float']:
+      print("\tMIN: " + str(column['min']) + " MAX: " + str(column['max']) + "\tMEAN: " + str(column['mean']), end='')
+    if original_data_count > 0:
+      print("\tMISSING: " + str(int(float(len(column['missing_values'])) / original_data_count * 100)) + '% [' + str(len(column['missing_values'])) + ']', end='')
+    else:
+      print("\tMISSING: 0% [" + str(len(column['missing_values'])) + ']', end='')
+    print("\tVALUES: " + str(len(column['values'])))
+    
+  command = input(str(original_data_count) + '/' + str(len(marked)) + "> ")
+  original_command = command
+  command = command.upper()
+  work_done = False
   
-  print(column)
+  print('---------- ---------- ---------- ---------- ----------')
+
+  argv = command.split(' ')
+  recalculate = False
+  
+  if len(argv) > 1 and argv[0] == 'SQL': # ----------------------------- SQL
+    work_done = True
+    sql = original_command[4:]
+    try:
+      print('Executing >' + sql + '<')
+      cursor.execute(sql)
+      
+      if argv[1] == 'SELECT':
+        for row in cursor.fetchall():
+          print(row)
+      if command.find('UPDATE') > -1 or command.find('DELETE') > -1:
+        recalculate = True
+        database.commit()
+      print('Done')
+    except sqlite3.Error as e:
+      print('An error occurred: ' + str(e.args[0]))
+  elif len(argv) == 1:  # ---------------------------------------------- RECALCULATE
+    if argv[0] == 'REC':
+      recalculate = True
+      work_done = True
+    elif argv[0] == 'SAVE': # ------------------------------------------ SAVE
+      print('SAVING TO ' + output_filename)
+      output_file = open(output_filename, 'w')
+      csvwriter = csv.writer(output_file)
+      header = []
+      for i in range(len(original_columns)):
+        if i != id_column_index:
+          header.append(original_columns[i]['name'])
+      csvwriter.writerow(header)
+      
+      cursor.execute('SELECT "' + '","'.join(header) + '" FROM data')
+      for row in cursor.fetchall():
+        csvwriter.writerow(row)
+      output_file.close()
+      work_done = True
+    elif argv[0] == 'MINV':
+      print('INVERSE MARKED ENTRIES')
+      tm = marked
+      marked = unmarked
+      unmarked = tm
+      work_done = True
+    elif argv[0] == 'MRES':
+      print('RESET MARKS')
+      marked = []
+      unmarked = []
+      cursor.execute('SELECT id FROM data')
+      for row in cursor.fetchall():
+        unmarked.append(str(row[0]))
+      work_done = True
+    elif argv[0] == 'MSHOW':
+      print(marked)
+      work_done = True
+    elif argv[0] == 'USHOW':
+      print(unmarked)
+      work_done = True
+  elif len(argv) == 2: 
+    if argv[0] == 'VALUES': # ------------------------------------------ VALUES
+      work_done = True
+      try:
+        column_index = int(argv[1])
+      except ValueError:
+        print('Not a valid option')
+        column_index = None
+      if column_index != None and column_index > -1 and column_index < len(original_columns):
+        column = original_columns[column_index]
+        values = list(column['values'].keys())
+        values.sort()
+        for v in values:
+          print(str(v) + "\t" + str(int(float(len(column['values'][v])) / (original_data_count - len(column['missing_values'])) * 100)) + '% [' + str(len(column['values'][v])) + ']')
+    elif argv[0] == 'DROP': # ------------------------------------------ DROP MARK
+      if argv[1] == 'MARK':
+        cursor.execute('DELETE FROM data WHERE id IN ("' + '","'.join(marked) + '");')
+        database.commit()
+        recalculate = True
+        marked = []
+        work_done = True
+      elif argv[1] == 'UNMARK':
+        print('DROP UNMARKED DATA (' + str(len(unmarked)) + ')')
+        tmp = []
+        j = 0
+        for i in range(len(unmarked)):
+          tmp.append(unmarked[i])
+          j += 1
+          if j >= 1000:
+            cursor.execute('DELETE FROM data WHERE id IN ("' + '","'.join(tmp) + '");')
+            print(str( int(float(i * 100) / len(unmarked))) + "%")
+            j = 0
+            tmp = []
+
+        if len(tmp) > 0:
+          cursor.execute('DELETE FROM data WHERE id IN ("' + '","'.join(tmp) + '");')
+        print("100%")
+        
+        print('Commit')
+        database.commit()
+        print('Done')
+        recalculate = True
+        unmarked = []
+        work_done = True
+  elif len(argv) == 3:
+    if argv[0] == 'DROP': # -------------------------------------------- DROP
+      if argv[1] == 'COL':
+        work_done = True
+        try:
+          column_index = int(argv[2])
+        except ValueError:
+          print('Not a valid option')
+          column_index = None
+        
+        if column_index !=None and column_index > 0 and column_index < len(original_columns) and column_index != id_column_index:
+          print('Dropping column ' + str(column_index))
+          newcols = []
+          for i in range(len(original_columns)):
+            if i != column_index:
+              newcols.append(original_columns[i]['name'])
+          cursor.execute('CREATE TABLE tmp ("' + '","'.join(newcols) + '");')
+          
+          cursor.execute('INSERT INTO tmp SELECT "' + '","'.join(newcols) + '" FROM data')
+          cursor.execute('DROP TABLE data')
+          cursor.execute('ALTER TABLE tmp RENAME TO data')
+          database.commit()
+          del original_columns[column_index]
+      elif argv[1] == 'MIS':
+        work_done = True
+        try:
+          column_index = int(argv[2])
+        except ValueError:
+          print('Not a valid option')
+          column_index = None
+        
+        if column_index !=None and column_index > -1 and column_index < len(original_columns) and column_index != id_column_index:
+          column = original_columns[column_index]
+          missing = column['missing_values']
+          if len(missing) > 0:
+            print('Dropping rows with missing values in ' + str(column_index) + ' [' + str(len(missing)) + ']')
+            cursor.execute('DELETE FROM data WHERE id IN (' + ','.join(missing) + ');')
+            database.commit()
+            recalculate = True
+          else:
+            print('Nothing to do')
+      elif argv[1] == 'VAL':
+        work_done = True
+        pass
+  elif len(argv) == 4:
+    if argv[0] == 'MARK': # ----------------------------------------- MARK
+      if argv[1] == 'COL':
+        try:
+          column_index = int(argv[2])
+        except ValueError:
+          print('Not a valid option')
+          column_index == None
+        
+        if column_index != None and column_index > -1 and column_index < len(original_columns):
+          value = argv[3]
+          if value in original_columns[column_index]['values'].keys():
+            print('MARKING ALL ' + value + ' ...')
+            for k in original_columns[column_index]['values'][value]:
+              if str(k) in unmarked:
+                try:
+                  unmarked.remove(str(k))
+                except ValueError:
+                  pass
+              
+              if str(k) not in marked:
+                marked.append(str(k))
+            work_done = True
+
+  # -------------------------------------------------------------------- Recalculate statistics
+  if recalculate:
+    print("Recalculating statistics ...")
+    database.rollback()
+    for i, column in enumerate(original_columns):
+      column = {'float':True, 'name':column['name'], 'max':None, 'min':None, 'missing_values':[], 'mean':0.0, 'values':{}}
+      original_columns[i] = column
+    
+    i = 0
+    for row in cursor.execute("SELECT * FROM data;"):
+    #for i in range(original_data_count):
+    #  row = original_data[i]
+      
+      for j in range(len(row)):
+        field = row[j]
+        column = original_columns[j]
+    
+        if field == None or field == '':
+          column['missing_values'].append(i)
+        else:
+          if column['float']:
+            
+            try:
+              field = float(field)
+              # Collect statistics about the data
+              if column['min'] == None or field < column['min']:
+                column['min'] = field
+              if column['max'] == None or field > column['max']:
+                column['max'] = field
+              column['mean'] += field
+            
+            except ValueError:
+              column['float'] = False
+              column['mean'] = 0
+              pass
+        
+        if field not in column['values']:
+          column['values'][field] = []
+        column['values'][field].append(i)
+      i += 1
+    cursor.execute('SELECT COUNT(*) FROM data;')
+    original_data_count = cursor.fetchone()[0]
+
+    # Compute the mean and output the statistics
+    for i in range(len(original_columns)):
+      column = original_columns[i]
+      if column['float']:
+        if original_data_count > 0:
+          column['mean'] = column['mean'] / (original_data_count - len(column['missing_values']))
+        else:
+          column['mean'] = 0
+  
+  if len(unmarked) + len(marked) != original_data_count:
+    print('Checking marked data ...')
+    for k in marked:
+      if str(k) in unmarked:
+        unmarked.remove(str(k))
+    for k in unmarked:
+      if str(k) in marked:
+        unmarked.remove(str(k))
+    
+    cursor.execute('SELECT id FROM data')
+    for row in cursor.fetchall():
+      if row[0] not in marked and row[0] not in unmarked:
+        unmarked.append(row[0])
+
+  #--------------------------------------------------------------------- No work was done - display help
+  if not work_done:
+    print('Available Commands:')
+    print("sql SQL_STATEMENT \t - Execute an sql statement")
+    print("rec \t - Recalculate statistics (you should not need this)")
+    print("drop")
+    print("\tmis COLUMN_INDEX \t - Drop all rows with missing values in this column")
+    print("\tcol COLUMN_INDEX \t - Drop the specified column altogether")
+    print("\tmark \t - Drop all marked entries")
+    print("\tunmark \t - Drop all unmarked entries")
+    print('mark')
+    print("\tcol COLUMN_INDEX VALUE \t - Mark all entries with the specified value in column")
+    print('minv\t - Inverse marked entries')
+    print("values COLUMN_INDEX \t - Show all possible values and their distribution for a column")
+    print('quit/exit\t - Exit program without saving')
