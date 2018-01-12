@@ -127,9 +127,9 @@ for row in csvreader:
           column['mean'] = 0
           pass
     
-    if field not in column['values']:
-      column['values'][field] = []
-    column['values'][field].append(j)
+      if str(field) not in column['values']:
+        column['values'][str(field)] = []
+      column['values'][str(field)].append(j)
     
     newrow.append(field)
   
@@ -163,15 +163,14 @@ while command != 'EXIT' and command != 'QUIT':
       print("\tMISSING: 0% [" + str(len(column['missing_values'])) + ']', end='')
     print("\tVALUES: " + str(len(column['values'])))
     
-  command = input(str(original_data_count) + '/' + str(len(marked)) + "> ")
-  original_command = command
-  command = command.upper()
+  original_command = input(str(original_data_count) + '/' + str(len(marked)) + "> ")
+  command = original_command.upper()
   work_done = False
+  argv = command.split(' ')
+  oargv = original_command.split(' ')
+  recalculate = False
   
   print('---------- ---------- ---------- ---------- ----------')
-
-  argv = command.split(' ')
-  recalculate = False
   
   if len(argv) > 1 and argv[0] == 'SQL': # ----------------------------- SQL
     work_done = True
@@ -326,7 +325,7 @@ while command != 'EXIT' and command != 'QUIT':
           column_index == None
         
         if column_index != None and column_index > -1 and column_index < len(original_columns):
-          value = argv[3]
+          value = oargv[3]
           if value in original_columns[column_index]['values'].keys():
             print('MARKING ALL ' + value + ' ...')
             for k in original_columns[column_index]['values'][value]:
@@ -339,6 +338,46 @@ while command != 'EXIT' and command != 'QUIT':
               if str(k) not in marked:
                 marked.append(str(k))
             work_done = True
+    elif argv[0] == 'SCALE': # ----------------------------------------- SCALE
+      try:
+        scalecol = int(argv[1])
+      except ValueError:
+        print('Not a valid option')
+        scalecol = None
+      
+      if scalecol > -1 and scalecol < len(original_columns) and original_columns[scalecol]['float']:
+
+        if argv[2] == 'CLASS':
+          try:
+            column_index = int(argv[3])
+          except ValueError:
+            print('Not a valid option')
+            column_index == None
+          
+          if column_index != None and column_index > -1 and column_index < len(original_columns):
+            for classv in original_columns[column_index]['values'].keys():
+              
+              print('SCALING ALL ' + classv + ' BETWEEN 0 and 1 ...')
+            
+              sql = 'SELECT MAX("' + original_columns[scalecol]['name'] + '"),MIN("' + original_columns[scalecol]['name'] + '") FROM data WHERE "' + original_columns[column_index]['name'] + '"="' + classv + '" AND "' + original_columns[scalecol]['name'] + '" IS NOT NULL AND "' + original_columns[scalecol]['name'] + '" != ""'
+              cursor.execute(sql)
+              row = cursor.fetchone()
+              maxval = row[0]
+              minval = row[1]
+              
+              if maxval != None and minval != None:
+                if maxval != minval:
+                  sql = 'UPDATE data SET "' + original_columns[scalecol]['name'] + '"=("' + original_columns[scalecol]['name'] + '" - ' + str(minval) + ') / (' + str(maxval) + ' - ' + str(minval) + ' ) WHERE "' + original_columns[column_index]['name'] + '"="' + classv + '" AND "' + original_columns[scalecol]['name'] + '" IS NOT NULL AND "' + original_columns[scalecol]['name'] + '" != ""'
+                else:
+                  sql = 'UPDATE data SET "' + original_columns[scalecol]['name'] + '"=0.5 WHERE "' + original_columns[column_index]['name'] + '"="' + classv + '" AND "' + original_columns[scalecol]['name'] + '" IS NOT NULL AND "' + original_columns[scalecol]['name'] + '" != ""'
+                
+                print(sql)
+                cursor.execute(sql)
+                database.commit()
+                recalculate = True
+
+            print('... DONE')
+
 
   # -------------------------------------------------------------------- Recalculate statistics
   if recalculate:
@@ -376,9 +415,9 @@ while command != 'EXIT' and command != 'QUIT':
               column['mean'] = 0
               pass
         
-        if field not in column['values']:
-          column['values'][field] = []
-        column['values'][field].append(i)
+          if str(field) not in column['values']:
+            column['values'][str(field)] = []
+          column['values'][str(field)].append(i)
       i += 1
     cursor.execute('SELECT COUNT(*) FROM data;')
     original_data_count = cursor.fetchone()[0]
@@ -387,7 +426,7 @@ while command != 'EXIT' and command != 'QUIT':
     for i in range(len(original_columns)):
       column = original_columns[i]
       if column['float']:
-        if original_data_count > 0:
+        if original_data_count - len(column['missing_values']) > 0:
           column['mean'] = column['mean'] / (original_data_count - len(column['missing_values']))
         else:
           column['mean'] = 0
