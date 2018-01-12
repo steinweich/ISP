@@ -1,0 +1,78 @@
+Agriculture / Land =================================================
+AG.LND.IRIG.AG.ZS	Agricultural irrigated land
+AG.LND.AGRI.ZS		Agricultural land(per cent of land area))	
+NV.AGR.TOTL.KD.ZG	Agriculture, value added ( annual growth)
+AG.LND.ARBL.ZS		Arable Land
+AG.PRD.CREL.MT		Cereal Production
+ER.FSH.CAPT.MT		Capture fisheries production
+AG.YLD.CREL.KG		Cereal Yield
+AG.PRD.CROP.XD		Crop Production index
+TM.VAL.FOOD.ZS.UN	Food import
+AG.PRD.FOOD.XD		Food production index
+TX.VAL.FOOD.ZS.UN	Food export
+AG.LND.FRST.ZS		Forest Area
+AG.LND.EL5M.ZS		Land area where elevation is below 5 meters
+AG.LND.CREL.HA		Land under cereal production
+ER.FSH.PROD.MT		Total Fisheries production
+
+Water ==============================================================
+SH.H2O.SAFE.ZS		Improved water source
+SH.H2O.BASW.ZS		People using basic drinking water services
+ER.H2O.INTR.PC		Renewable internal freshwater resources per capita
+ER.GDP.FWTL.M3.KD	Water productivity
+ER.H2O.FWTL.ZS		Annual freshwater withdrawals, agriculture (domestic, industry, total)
+
+Species Threatened ================================================
+EN.BIR.THRD.NO		Bird species, threatened
+EN.MAM.THRD.NO		Mammal species threatened
+ER.MRN.PTMR.ZS		(Marine protected areas)
+EN.HPT.THRD.NO		Plant species threatened
+ER.LND.PTLD.ZS		Terrestrial protected areas
+
+Health related Data ===============================================
+SH.DTH.COMM.ZS		cause of death by communicable diseases
+SH.MLR.INCD.P3		Incidence of malaria
+SH.TBS.INCD		Incidence of tuberculosis
+SP.DYN.LE00.IN		Life expectancy
+
+Energy consumption / production ===================================
+EG.ELC.RNEW.ZS		Renewable electricity output
+EG.FEC.RNEW.ZS		Renewable energy consumption
+EG.USE.ELEC.KH.PC	Electric power consumption
+EG.ELC.FOSL.ZS		Electricity production
+EG.ELC.NUCL.ZS
+EG.ELC.HYRO.ZS
+EG.ELC.RNWX.ZS
+EG.USE.COMM.GD.PP.KD	Energy use
+EG.USE.COMM.FO.ZS	Fossil fuel energy consumption
+
+Gas Emissions =====================================================
+EN.ATM.CO2E.KT		CO2 emissions
+EN.ATM.METH.EG.ZS	Energy related methane emissions
+EN.ATM.HFCG.KT.CE	HFC gas emissions
+EN.ATM.METH.KT.CE	Methane emissions
+EN.ATM.NOXE.KT.CE	Nitrous oxide emissions
+EN.ATM.GHGO.KT.CE	Other greenhouse gas emission
+EN.ATM.PFCG.KT.CE	PFC gas emissions
+EN.ATM.PM25.MC.M3	PM2.5 air pollution
+EN.ATM.SF6G.KT.CE	SF6 gas emissions
+EN.ATM.GHGT.KT.CE	Total greenhouse gas emissions
+
+Natural Disaster ==================================================
+EN.CLC.DRSK.XQ		Disaster risk reduction progress score
+EN.CLC.MDAT.ZS		droughts, floods, extreme temperatures
+
+Wealth related Data ===============================================
+NY.GDP.MKTP.KD.ZG	GDP growth
+AG.PRD.LVSK.XD		Livestock production index
+SH.XPD.TOTL.ZS		Health expenditure par capita
+SN.ITK.DFCT		Depth of the food deficit
+SI.POV.NAGP		Poverty gap at national poverty lines
+
+Urbanization ======================================================
+AG.LND.TOTL.RU.K2	Rural land area
+AG.LND.EL5M.RU.ZS	Rural land area where elevation is below 5 meters
+SP.RUR.TOTL		Rural population
+AG.LND.TOTL.UR.K2	Urban Land area
+AG.LND.EL5M.UR.ZS	Urban Land area below 5 meter
+SP.URB.TOTL		Urban populations

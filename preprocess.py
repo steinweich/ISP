@@ -339,13 +339,24 @@ while command != 'EXIT' and command != 'QUIT':
                 marked.append(str(k))
             work_done = True
     elif argv[0] == 'SCALE': # ----------------------------------------- SCALE
-      try:
-        scalecol = int(argv[1])
-      except ValueError:
-        print('Not a valid option')
-        scalecol = None
       
-      if scalecol > -1 and scalecol < len(original_columns) and original_columns[scalecol]['float']:
+      fromcol = None
+      tocol = None
+      if argv[1].find("-") > -1:
+        cols = argv[1].split("-")
+        try:
+          fromcol = int(cols[0])
+          tocol = int(cols[1])
+        except ValueError:
+          print('Not a valid option')
+      else:
+        try:
+          fromcol = int(argv[1])
+          tocol = fromcol
+        except ValueError:
+          print('Not a valid option')
+      
+      if fromcol != None and tocol != None and fromcol > -1 and tocol > -1 and fromcol < len(original_columns) and tocol < len(original_columns):
 
         if argv[2] == 'CLASS':
           try:
@@ -356,27 +367,44 @@ while command != 'EXIT' and command != 'QUIT':
           
           if column_index != None and column_index > -1 and column_index < len(original_columns):
             for classv in original_columns[column_index]['values'].keys():
-              
               print('SCALING ALL ' + classv + ' BETWEEN 0 and 1 ...')
             
-              sql = 'SELECT MAX("' + original_columns[scalecol]['name'] + '"),MIN("' + original_columns[scalecol]['name'] + '") FROM data WHERE "' + original_columns[column_index]['name'] + '"="' + classv + '" AND "' + original_columns[scalecol]['name'] + '" IS NOT NULL AND "' + original_columns[scalecol]['name'] + '" != ""'
-              cursor.execute(sql)
-              row = cursor.fetchone()
-              maxval = row[0]
-              minval = row[1]
+              maxval = None
+              minval = None
+              for scalecol in range(fromcol, tocol + 1):
+                if original_columns[scalecol]['float']:
+                  sql = 'SELECT MAX("' + original_columns[scalecol]['name'] + '"),MIN("' + original_columns[scalecol]['name'] + '") FROM data WHERE "' + original_columns[column_index]['name'] + '"="' + classv + '" AND "' + original_columns[scalecol]['name'] + '" IS NOT NULL AND "' + original_columns[scalecol]['name'] + '" != ""'
+                  cursor.execute(sql)
+                  row = cursor.fetchone()
+                  if row[0] != None and (maxval == None or float(row[0]) > maxval):
+                    maxval = float(row[0])
+                
+                  if row[1] != None and (minval == None or float(row[1]) < minval):
+                    minval = float(row[1])
+
               
               if maxval != None and minval != None:
-                if maxval != minval:
-                  sql = 'UPDATE data SET "' + original_columns[scalecol]['name'] + '"=("' + original_columns[scalecol]['name'] + '" - ' + str(minval) + ') / (' + str(maxval) + ' - ' + str(minval) + ' ) WHERE "' + original_columns[column_index]['name'] + '"="' + classv + '" AND "' + original_columns[scalecol]['name'] + '" IS NOT NULL AND "' + original_columns[scalecol]['name'] + '" != ""'
-                else:
-                  sql = 'UPDATE data SET "' + original_columns[scalecol]['name'] + '"=0.5 WHERE "' + original_columns[column_index]['name'] + '"="' + classv + '" AND "' + original_columns[scalecol]['name'] + '" IS NOT NULL AND "' + original_columns[scalecol]['name'] + '" != ""'
                 
-                print(sql)
-                cursor.execute(sql)
-                database.commit()
-                recalculate = True
+                print("... Found " + str(minval) + " - " + str(maxval))
+                scaled = 0
+                for scalecol in range(fromcol, tocol + 1):
+                  if original_columns[scalecol]['float']:
+                    if maxval != minval:
+                      sql = 'UPDATE data SET "' + original_columns[scalecol]['name'] + '"=("' + original_columns[scalecol]['name'] + '" - ' + str(minval) + ') / (' + str(maxval) + ' - ' + str(minval) + ' ) WHERE "' + original_columns[column_index]['name'] + '"="' + classv + '" AND "' + original_columns[scalecol]['name'] + '" IS NOT NULL AND "' + original_columns[scalecol]['name'] + '" != ""'
+                    else:
+                      sql = 'UPDATE data SET "' + original_columns[scalecol]['name'] + '"=0.5 WHERE "' + original_columns[column_index]['name'] + '"="' + classv + '" AND "' + original_columns[scalecol]['name'] + '" IS NOT NULL AND "' + original_columns[scalecol]['name'] + '" != ""'
+                  
+                    #print(sql)
+                    cursor.execute(sql)
+                    recalculate = True
+                    scaled += 1
+                print("... scaled " + str(scaled) + " columns")
+              else:
+                print("... Nothing todo")
+            if recalculate:
+              database.commit()
 
-            print('... DONE')
+            print('DONE')
 
 
   # -------------------------------------------------------------------- Recalculate statistics
@@ -457,6 +485,7 @@ while command != 'EXIT' and command != 'QUIT':
     print("\tunmark \t - Drop all unmarked entries")
     print('mark')
     print("\tcol COLUMN_INDEX VALUE \t - Mark all entries with the specified value in column")
-    print('minv\t - Inverse marked entries')
+    print("minv\t - Inverse marked entries")
+    print("scale COLUMN_INDEX[-TO_COLUMN_INDEX] class COLUMN_INDEX \t - scale the values between 0 and 1 but only within the same class")
     print("values COLUMN_INDEX \t - Show all possible values and their distribution for a column")
     print('quit/exit\t - Exit program without saving')
