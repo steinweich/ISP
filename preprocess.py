@@ -91,7 +91,7 @@ for row in csvreader:
       sql.insert(0, 'id')
       id_column_index = 0
     
-    sql = 'CREATE TABLE data ("' + '","'.join(sql) + '");'
+    sql = "CREATE TABLE data ([" + "],[".join(sql) + "])"
     cursor.execute(sql)
     
     if input_filename_has_header:
@@ -134,7 +134,7 @@ for row in csvreader:
     newrow.append(field)
   
   #original_data.append(newrow)
-  cursor.execute('INSERT INTO data VALUES (' + ','.join(['?'] * len(original_columns)) + ');', newrow)
+  cursor.execute("INSERT INTO data VALUES (" + ','.join(['?'] * len(original_columns)) + ")", newrow)
   original_data_count += 1
   j+=1
 database.commit()
@@ -143,7 +143,10 @@ database.commit()
 for i in range(len(original_columns)):
   column = original_columns[i]
   if column['float']:
-    column['mean'] = column['mean'] / (original_data_count - len(column['missing_values']))  
+    if original_data_count - len(column['missing_values']) > 0:
+      column['mean'] = column['mean'] / (original_data_count - len(column['missing_values']))
+    else:
+      column['mean'] = 0
 
 # Command Loop
 command = None
@@ -202,7 +205,7 @@ while command != 'EXIT' and command != 'QUIT':
           header.append(original_columns[i]['name'])
       csvwriter.writerow(header)
       
-      cursor.execute('SELECT "' + '","'.join(header) + '" FROM data')
+      cursor.execute("SELECT [" + "],[".join(header) + "] FROM data")
       for row in cursor.fetchall():
         csvwriter.writerow(row)
       output_file.close()
@@ -217,15 +220,23 @@ while command != 'EXIT' and command != 'QUIT':
       print('RESET MARKS')
       marked = []
       unmarked = []
-      cursor.execute('SELECT id FROM data')
+      cursor.execute("SELECT id FROM data")
       for row in cursor.fetchall():
         unmarked.append(str(row[0]))
       work_done = True
     elif argv[0] == 'MSHOW':
-      print(marked)
+      for m in marked:
+        sql = "SELECT * FROM data WHERE id='" + str(m) + "'"
+        cursor.execute(sql)
+        print(cursor.fetchone())
+        
+      #print(marked)
       work_done = True
     elif argv[0] == 'USHOW':
-      print(unmarked)
+      for m in unmarked:
+        sql = "SELECT * FROM data WHERE id='" + str(m) + "'"
+        cursor.execute(sql)
+        print(cursor.fetchone())
       work_done = True
   elif len(argv) == 2: 
     if argv[0] == 'VALUES': # ------------------------------------------ VALUES
@@ -243,7 +254,7 @@ while command != 'EXIT' and command != 'QUIT':
           print(str(v) + "\t" + str(int(float(len(column['values'][v])) / (original_data_count - len(column['missing_values'])) * 100)) + '% [' + str(len(column['values'][v])) + ']')
     elif argv[0] == 'DROP': # ------------------------------------------ DROP MARK
       if argv[1] == 'MARK':
-        cursor.execute('DELETE FROM data WHERE id IN ("' + '","'.join(marked) + '");')
+        cursor.execute("DELETE FROM data WHERE id IN ('" + "','".join(marked) + "')")
         database.commit()
         recalculate = True
         marked = []
@@ -256,13 +267,13 @@ while command != 'EXIT' and command != 'QUIT':
           tmp.append(unmarked[i])
           j += 1
           if j >= 1000:
-            cursor.execute('DELETE FROM data WHERE id IN ("' + '","'.join(tmp) + '");')
+            cursor.execute("DELETE FROM data WHERE id IN ('" + "','".join(tmp) + "')")
             print(str( int(float(i * 100) / len(unmarked))) + "%")
             j = 0
             tmp = []
 
         if len(tmp) > 0:
-          cursor.execute('DELETE FROM data WHERE id IN ("' + '","'.join(tmp) + '");')
+          cursor.execute("DELETE FROM data WHERE id IN ('" + "','".join(tmp) + "')")
         print("100%")
         
         print('Commit')
@@ -271,6 +282,62 @@ while command != 'EXIT' and command != 'QUIT':
         recalculate = True
         unmarked = []
         work_done = True
+    elif argv[0] == 'SCALE':
+      fromcol = None
+      tocol = None
+      if argv[1].find("-") > -1:
+        cols = argv[1].split("-")
+        try:
+          fromcol = int(cols[0])
+          tocol = int(cols[1])
+        except ValueError:
+          print('Not a valid option')
+      else:
+        try:
+          fromcol = int(argv[1])
+          tocol = fromcol
+        except ValueError:
+          print('Not a valid option')
+      
+      if fromcol != None and tocol != None and fromcol > -1 and tocol > -1 and fromcol < len(original_columns) and tocol < len(original_columns):
+        print('Scaling columns ' + str(fromcol) + ' to ' + str(tocol) + ' ...')
+        maxval = None
+        minval = None
+        for scalecol in range(fromcol, tocol + 1):
+          if original_columns[scalecol]['float']:
+            sql = "SELECT MAX([" + original_columns[scalecol]['name'] + "]),MIN([" + original_columns[scalecol]['name'] + "]) FROM data WHERE [" + original_columns[scalecol]['name'] + "] IS NOT NULL AND [" + original_columns[scalecol]['name'] + "] != ''"
+            cursor.execute(sql)
+            row = cursor.fetchone()
+            if row[0] != None and (maxval == None or float(row[0]) > maxval):
+              maxval = float(row[0])
+          
+            if row[1] != None and (minval == None or float(row[1]) < minval):
+              minval = float(row[1])
+
+        
+        if maxval != None and minval != None:
+          
+          print("... Found " + str(minval) + " - " + str(maxval))
+          scaled = 0
+          for scalecol in range(fromcol, tocol + 1):
+            if original_columns[scalecol]['float']:
+              if maxval != minval:
+                sql = "UPDATE data SET [" + original_columns[scalecol]['name'] + "]=([" + original_columns[scalecol]['name'] + "] - '" + str(minval) + "') / ('" + str(maxval) + "' - '" + str(minval) + "' ) WHERE [" + original_columns[scalecol]['name'] + "] IS NOT NULL AND [" + original_columns[scalecol]['name'] + "] != ''"
+              else:
+                sql = "UPDATE data SET [" + original_columns[scalecol]['name'] + "]='0.5' WHERE [" + original_columns[scalecol]['name'] + "] IS NOT NULL AND [" + original_columns[scalecol]['name'] + "] != ''"
+            
+              #print(sql)
+              cursor.execute(sql)
+              recalculate = True
+              scaled += 1
+          print("... scaled " + str(scaled) + " columns")
+        else:
+          print("... Nothing todo")
+      if recalculate:
+        database.commit()
+
+      print('DONE')
+      
   elif len(argv) == 3:
     if argv[0] == 'DROP': # -------------------------------------------- DROP
       if argv[1] == 'COL':
@@ -287,11 +354,11 @@ while command != 'EXIT' and command != 'QUIT':
           for i in range(len(original_columns)):
             if i != column_index:
               newcols.append(original_columns[i]['name'])
-          cursor.execute('CREATE TABLE tmp ("' + '","'.join(newcols) + '");')
+          cursor.execute("CREATE TABLE tmp ([" + "],[".join(newcols) + "])")
           
-          cursor.execute('INSERT INTO tmp SELECT "' + '","'.join(newcols) + '" FROM data')
-          cursor.execute('DROP TABLE data')
-          cursor.execute('ALTER TABLE tmp RENAME TO data')
+          cursor.execute("INSERT INTO tmp SELECT [" + "],[".join(newcols) + "] FROM data")
+          cursor.execute("DROP TABLE data")
+          cursor.execute("ALTER TABLE tmp RENAME TO data")
           database.commit()
           del original_columns[column_index]
       elif argv[1] == 'MIS':
@@ -307,7 +374,7 @@ while command != 'EXIT' and command != 'QUIT':
           missing = column['missing_values']
           if len(missing) > 0:
             print('Dropping rows with missing values in ' + str(column_index) + ' [' + str(len(missing)) + ']')
-            cursor.execute('DELETE FROM data WHERE id IN (' + ','.join(missing) + ');')
+            cursor.execute("DELETE FROM data WHERE id IN (" + ",".join(missing) + ")")
             database.commit()
             recalculate = True
           else:
@@ -329,14 +396,22 @@ while command != 'EXIT' and command != 'QUIT':
           if value in original_columns[column_index]['values'].keys():
             print('MARKING ALL ' + value + ' ...')
             for k in original_columns[column_index]['values'][value]:
-              if str(k) in unmarked:
-                try:
-                  unmarked.remove(str(k))
-                except ValueError:
-                  pass
               
-              if str(k) not in marked:
+              um = False
+              ma = False
+              if str(k) in unmarked:
+                um = True
+              if str(k) in marked:
+                ma = True
+              
+              if not um and ma:
+                pass
+              elif um and not ma:
+                unmarked.remove(str(k))
                 marked.append(str(k))
+              else:
+                print("@ Error in marking: " + str(k) + " :: " + str(um) + "/" + str(ma))
+
             work_done = True
     elif argv[0] == 'SCALE': # ----------------------------------------- SCALE
       
@@ -373,7 +448,7 @@ while command != 'EXIT' and command != 'QUIT':
               minval = None
               for scalecol in range(fromcol, tocol + 1):
                 if original_columns[scalecol]['float']:
-                  sql = 'SELECT MAX("' + original_columns[scalecol]['name'] + '"),MIN("' + original_columns[scalecol]['name'] + '") FROM data WHERE "' + original_columns[column_index]['name'] + '"="' + classv + '" AND "' + original_columns[scalecol]['name'] + '" IS NOT NULL AND "' + original_columns[scalecol]['name'] + '" != ""'
+                  sql = "SELECT MAX([" + original_columns[scalecol]['name'] + "]),MIN([" + original_columns[scalecol]['name'] + "]) FROM data WHERE [" + original_columns[column_index]['name'] + "]='" + classv + "' AND [" + original_columns[scalecol]['name'] + "] IS NOT NULL AND [" + original_columns[scalecol]['name'] + "] != ''"
                   cursor.execute(sql)
                   row = cursor.fetchone()
                   if row[0] != None and (maxval == None or float(row[0]) > maxval):
@@ -390,9 +465,9 @@ while command != 'EXIT' and command != 'QUIT':
                 for scalecol in range(fromcol, tocol + 1):
                   if original_columns[scalecol]['float']:
                     if maxval != minval:
-                      sql = 'UPDATE data SET "' + original_columns[scalecol]['name'] + '"=("' + original_columns[scalecol]['name'] + '" - ' + str(minval) + ') / (' + str(maxval) + ' - ' + str(minval) + ' ) WHERE "' + original_columns[column_index]['name'] + '"="' + classv + '" AND "' + original_columns[scalecol]['name'] + '" IS NOT NULL AND "' + original_columns[scalecol]['name'] + '" != ""'
+                      sql = "UPDATE data SET [" + original_columns[scalecol]['name'] + "]=([" + original_columns[scalecol]['name'] + "] - '" + str(minval) + "') / ('" + str(maxval) + "' - '" + str(minval) + "' ) WHERE [" + original_columns[column_index]['name'] + "]='" + classv + "' AND [" + original_columns[scalecol]['name'] + "] IS NOT NULL AND [" + original_columns[scalecol]['name'] + "] != ''"
                     else:
-                      sql = 'UPDATE data SET "' + original_columns[scalecol]['name'] + '"=0.5 WHERE "' + original_columns[column_index]['name'] + '"="' + classv + '" AND "' + original_columns[scalecol]['name'] + '" IS NOT NULL AND "' + original_columns[scalecol]['name'] + '" != ""'
+                      sql = "UPDATE data SET [" + original_columns[scalecol]['name'] + "]='0.5' WHERE [" + original_columns[column_index]['name'] + "]='" + classv + "' AND [" + original_columns[scalecol]['name'] + "] IS NOT NULL AND [" + original_columns[scalecol]['name'] + "] != ''"
                   
                     #print(sql)
                     cursor.execute(sql)
@@ -416,7 +491,7 @@ while command != 'EXIT' and command != 'QUIT':
       original_columns[i] = column
     
     i = 0
-    for row in cursor.execute("SELECT * FROM data;"):
+    for row in cursor.execute("SELECT * FROM data"):
     #for i in range(original_data_count):
     #  row = original_data[i]
       
@@ -447,7 +522,7 @@ while command != 'EXIT' and command != 'QUIT':
             column['values'][str(field)] = []
           column['values'][str(field)].append(i)
       i += 1
-    cursor.execute('SELECT COUNT(*) FROM data;')
+    cursor.execute("SELECT COUNT(*) FROM data")
     original_data_count = cursor.fetchone()[0]
 
     # Compute the mean and output the statistics
@@ -468,7 +543,7 @@ while command != 'EXIT' and command != 'QUIT':
       if str(k) in marked:
         unmarked.remove(str(k))
     
-    cursor.execute('SELECT id FROM data')
+    cursor.execute("SELECT id FROM data")
     for row in cursor.fetchall():
       if row[0] not in marked and row[0] not in unmarked:
         unmarked.append(row[0])
@@ -486,6 +561,9 @@ while command != 'EXIT' and command != 'QUIT':
     print('mark')
     print("\tcol COLUMN_INDEX VALUE \t - Mark all entries with the specified value in column")
     print("minv\t - Inverse marked entries")
-    print("scale COLUMN_INDEX[-TO_COLUMN_INDEX] class COLUMN_INDEX \t - scale the values between 0 and 1 but only within the same class")
+    print("mres\t - Reset marks")
+    print("mshow\t - Show all marked")
+    print("mushow\t - Show all unmarked")
+    print("scale COLUMN_INDEX[-TO_COLUMN_INDEX] [class COLUMN_INDEX] \t - scale the values between 0 and 1 but only within the same class")
     print("values COLUMN_INDEX \t - Show all possible values and their distribution for a column")
     print('quit/exit\t - Exit program without saving')
