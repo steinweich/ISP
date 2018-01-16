@@ -191,8 +191,8 @@ while command != 'EXIT' and command != 'QUIT':
       print('Done')
     except sqlite3.Error as e:
       print('An error occurred: ' + str(e.args[0]))
-  elif len(argv) == 1:  # ---------------------------------------------- RECALCULATE
-    if argv[0] == 'REC':
+  elif len(argv) == 1:  #11111111111111111111111111111111111111111111111
+    if argv[0] == 'REC':# ---------------------------------------------- RECALCULATE
       recalculate = True
       work_done = True
     elif argv[0] == 'SAVE': # ------------------------------------------ SAVE
@@ -238,7 +238,7 @@ while command != 'EXIT' and command != 'QUIT':
         cursor.execute(sql)
         print(cursor.fetchone())
       work_done = True
-  elif len(argv) == 2: 
+  elif len(argv) == 2: # 22222222222222222222222222222222222222222222222
     if argv[0] == 'VALUES': # ------------------------------------------ VALUES
       work_done = True
       try:
@@ -282,7 +282,7 @@ while command != 'EXIT' and command != 'QUIT':
         recalculate = True
         unmarked = []
         work_done = True
-    elif argv[0] == 'SCALE':
+    elif argv[0] == 'SCALE':  #----------------------------------------- SCALE
       fromcol = None
       tocol = None
       if argv[1].find("-") > -1:
@@ -335,10 +335,9 @@ while command != 'EXIT' and command != 'QUIT':
           print("... Nothing todo")
       if recalculate:
         database.commit()
-
       print('DONE')
-      
-  elif len(argv) == 3:
+        
+  elif len(argv) == 3: #333333333333333333333333333333333333333333333333
     if argv[0] == 'DROP': # -------------------------------------------- DROP
       if argv[1] == 'COL':
         work_done = True
@@ -382,7 +381,101 @@ while command != 'EXIT' and command != 'QUIT':
       elif argv[1] == 'VAL':
         work_done = True
         pass
-  elif len(argv) == 4:
+    elif argv[0] == 'FILLM': # ----------------------------------------- FILL RIGHT / LEFT
+      if argv[1] == 'RIGHT':
+        if argv[2].find('-') > -1:
+          fromcol = None
+          tocol = None
+          cols = argv[2].split('-')
+          try:
+            fromcol = int(cols[0])
+            tocol = int(cols[1])
+          except ValueError:
+            print('Not a valid option')
+        else:
+          try:
+            fromcol = int(argv[2])
+            tocol = fromcol
+          except ValueError:
+            print('Not a valid option')
+        
+        if fromcol != None and tocol != None and fromcol > -1 and fromcol < len(original_columns) and tocol > -1 and tocol < len(original_columns):
+          print("FILLING IN MISSING VALUES FROM THE RIGHT ...")
+          cols = []
+          for i in range(fromcol, tocol + 1):
+            cols.append(original_columns[i]['name'])
+          
+          change = 0
+          cursor.execute("SELECT [id],[" + "],[".join(cols) + "] FROM data")
+          for row in cursor.fetchall():
+            lastval = None
+            update = []
+            for i in range(len(row) - 1, 0, -1):
+              field = row[i]
+              if field != None and field != '':
+                lastval = field
+              else:
+                if lastval != None:
+                  update.append("[" + original_columns[i + fromcol - 1]['name'] + "]='" + str(lastval) + "'")
+                  change += 1
+            if len(update) > 0:
+              sql = "UPDATE data SET " + ",".join(update) + " WHERE [id]='" + row[0] + "'"
+              cursor.execute(sql)
+              
+          
+          if change > 0:
+            database.commit()
+            print("... DONE " + str(change) + " VALUES ADDED")
+            recalculate = True
+          work_done = True
+      elif argv[1] == 'LEFT':
+        if argv[2].find('-') > -1:
+          fromcol = None
+          tocol = None
+          cols = argv[2].split('-')
+          try:
+            fromcol = int(cols[0])
+            tocol = int(cols[1])
+          except ValueError:
+            print('Not a valid option')
+        else:
+          try:
+            fromcol = int(argv[2])
+            tocol = fromcol
+          except ValueError:
+            print('Not a valid option')
+        
+        if fromcol != None and tocol != None and fromcol > -1 and fromcol < len(original_columns) and tocol > -1 and tocol < len(original_columns):
+          print("FILLING IN MISSING VALUES FROM THE LEFT ...")
+          cols = []
+          for i in range(fromcol, tocol + 1):
+            cols.append(original_columns[i]['name'])
+          
+          change = 0
+          cursor.execute("SELECT [id],[" + "],[".join(cols) + "] FROM data")
+          for row in cursor.fetchall():
+            lastval = None
+            update = []
+            for i in range(1, len(row)):
+              field = row[i]
+              if field != None and field != '':
+                lastval = field
+              else:
+                if lastval != None:
+                  update.append("[" + original_columns[i + fromcol - 1]['name'] + "]='" + str(lastval) + "'")
+                  change += 1
+            if len(update) > 0:
+              sql = "UPDATE data SET " + ",".join(update) + " WHERE [id]='" + row[0] + "'"
+              cursor.execute(sql)
+              
+          
+          if change > 0:
+            database.commit()
+            print("... DONE " + str(change) + " VALUES ADDED")
+            recalculate = True
+          work_done = True
+        
+  elif len(argv) == 4: #444444444444444444444444444444444444444444444444
     if argv[0] == 'MARK': # ----------------------------------------- MARK
       if argv[1] == 'COL':
         try:
@@ -480,7 +573,60 @@ while command != 'EXIT' and command != 'QUIT':
               database.commit()
 
             print('DONE')
-
+    elif argv[0] == 'FILLM':
+      if argv[1] == 'CMEAN':
+        try:
+          column_index = int(argv[2])
+        except ValueError:
+          print('Not a valid option')
+          column_index == None
+        
+        if column_index > -1 and column_index < len(original_columns):
+          fromcol = None
+          tocol = None
+          if argv[3].find("-") > -1:
+            cols = argv[3].split("-")
+            try:
+              fromcol = int(cols[0])
+              tocol = int(cols[1])
+            except ValueError:
+              print('Not a valid option')
+          else:
+            try:
+              fromcol = int(argv[3])
+              tocol = fromcol
+            except ValueError:
+              print('Not a valid option')
+          
+          if fromcol != None and tocol != None and fromcol > -1 and tocol > -1 and fromcol < len(original_columns) and tocol < len(original_columns):
+            means = {}
+            print('REPLACING MISSING VALUES WITH CLASS AVERAGES ...')
+            cols = []
+            for i in range(fromcol, tocol + 1):
+              cols.append(original_columns[i]['name'])
+            cursor.execute("SELECT [id],[" + original_columns[column_index]['name'] + "],[" + "],[".join(cols) + "] FROM data")
+            change = 0
+            for row in cursor.fetchall():
+              update = []
+              for i in range(2, len(row)):
+                if row[i] == None or row[i] == '':
+                  key = row[1] + ":" + str(i)
+                  if key not in means:
+                    cursor.execute("SELECT AVG([" + original_columns[i + fromcol - 2]['name'] + "]) FROM data WHERE [" + original_columns[column_index]['name'] + "]='" + row[1] + "'")
+                    avg = cursor.fetchone()[0]
+                    means[key] = avg
+                  else:
+                    avg = means[key]
+                  change += 1
+                  update.append( "[" + original_columns[i + fromcol - 2]['name'] + "]='" + str(avg) + "'")
+              if len(update) > 0:
+                cursor.execute("UPDATE data SET " + ",".join(update) + " WHERE [id]='" + row[0] + "'")
+            
+            if change > 0:
+              database.commit()
+              recalculate = True
+            print('... DONE ' + str(change) + ' VALUES FILLED IN')
+            work_done = True
 
   # -------------------------------------------------------------------- Recalculate statistics
   if recalculate:
@@ -565,5 +711,6 @@ while command != 'EXIT' and command != 'QUIT':
     print("mshow\t - Show all marked")
     print("mushow\t - Show all unmarked")
     print("scale COLUMN_INDEX[-TO_COLUMN_INDEX] [class COLUMN_INDEX] \t - scale the values between 0 and 1 but only within the same class")
+    print("fillm (right | left | classmean COLUMN_INDEX) FROM_COL[-TO_COL]")
     print("values COLUMN_INDEX \t - Show all possible values and their distribution for a column")
     print('quit/exit\t - Exit program without saving')
