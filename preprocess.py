@@ -614,6 +614,8 @@ while command != 'EXIT' and command != 'QUIT':
                   if key not in means:
                     cursor.execute("SELECT AVG([" + original_columns[i + fromcol - 2]['name'] + "]) FROM data WHERE [" + original_columns[column_index]['name'] + "]='" + row[1] + "'")
                     avg = cursor.fetchone()[0]
+                    if avg == None:
+                      avg = 0
                     means[key] = avg
                   else:
                     avg = means[key]
